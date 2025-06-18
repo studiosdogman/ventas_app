@@ -1,9 +1,20 @@
 from flask import render_template, request, redirect, url_for, flash
 from app import app, login_manager, db, bcrypt
-from app.models import User
+from app.models import User, Producto
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash
-from app.models import User, Producto
+
+# ========================
+# RUTA RAÍZ
+# ========================
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        if current_user.rol == 'administrador':
+            return redirect(url_for('admin_index'))
+        elif current_user.rol == 'vendedor':
+            return redirect(url_for('ventas'))
+    return redirect(url_for('login'))
 
 # ========================
 # LOGIN
@@ -32,7 +43,6 @@ def login():
 
     return render_template('login.html')
 
-
 # ========================
 # REGISTRO
 # ========================
@@ -47,7 +57,6 @@ def registro():
         confirm_password = request.form.get('confirm-password', '')
         rol = request.form.get('rol', '')
 
-        # 🚨 Validar campos vacíos
         if not all([nombre, apellido, email, telefono, password, confirm_password, rol]):
             flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for('registro'))
@@ -78,7 +87,6 @@ def registro():
 
     return render_template('register.html')
 
-
 # ========================
 # SISTEMA DE VENTAS
 # ========================
@@ -97,7 +105,7 @@ def nueva_venta():
         flash("Acceso no autorizado.", "danger")
         return redirect(url_for('login'))
 
-    productos = Producto.query.all()  # Traemos todos los productos para seleccionar
+    productos = Producto.query.all()
 
     if request.method == 'POST':
         producto_id = request.form.get('producto')
@@ -107,10 +115,7 @@ def nueva_venta():
         producto = Producto.query.get(producto_id)
 
         if producto and producto.stock >= cantidad:
-            # Descontar stock
             producto.stock -= cantidad
-
-            # Aquí podríamos registrar la venta en una tabla de ventas (después)
             db.session.commit()
             flash("¡Venta registrada exitosamente!", "success")
             return redirect(url_for('ventas'))
@@ -121,9 +126,8 @@ def nueva_venta():
     return render_template('nueva_venta.html', productos=productos)
 
 # ========================
-# NUEVO PRODUCTO
+# AGREGAR PRODUCTO
 # ========================
-
 @app.route('/agregar_producto', methods=['GET', 'POST'])
 @login_required
 def agregar_producto():
@@ -137,9 +141,8 @@ def agregar_producto():
         tipo_producto = request.form['tipo_producto']
         marca = request.form['marca']
         imagen_url = request.form['imagen_url']
-        categoria = request.form['categoria']  # 🔹 Aquí obtienes la categoría
+        categoria = request.form['categoria']
 
-        # Crear el producto con la nueva categoría incluida
         nuevo_producto = Producto(
             nombre=nombre,
             descripcion=descripcion,
@@ -150,7 +153,7 @@ def agregar_producto():
             tipo_producto=tipo_producto,
             marca=marca,
             imagen_url=imagen_url,
-            categoria=categoria  # 🔹 Aquí la agregas al objeto
+            categoria=categoria
         )
 
         db.session.add(nuevo_producto)
@@ -160,11 +163,9 @@ def agregar_producto():
 
     return render_template('agregar_producto.html')
 
-
 # ========================
 # PRODUCTOS
 # ========================
-
 @app.route('/productos')
 @login_required
 def productos():
@@ -178,7 +179,6 @@ def productos():
 # ========================
 # ELIMINAR PRODUCTO
 # ========================
-
 @app.route('/eliminar_producto/<int:id>', methods=['POST'])
 @login_required
 def eliminar_producto(id):
@@ -191,7 +191,6 @@ def eliminar_producto(id):
 # ========================
 # EDITAR PRODUCTO
 # ========================
-
 @app.route('/editar_producto/<int:id>', methods=['GET', 'POST'])
 @login_required
 def editar_producto(id):
@@ -214,8 +213,6 @@ def editar_producto(id):
 
     return render_template('editar_producto.html', producto=producto)
 
-
-
 # ========================
 # PANEL ADMINISTRADOR
 # ========================
@@ -227,7 +224,6 @@ def admin_index():
         return redirect(url_for('login'))
 
     search = request.args.get('search')
-
     if search:
         usuarios = User.query.filter(
             (User.nombre.ilike(f'%{search}%')) |
@@ -240,8 +236,6 @@ def admin_index():
 
     return render_template('admin_index.html', usuarios=usuarios, search=search)
 
-
-
 # ========================
 # LOGOUT
 # ========================
@@ -250,16 +244,12 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-
 # ========================
 # CARGA DE USUARIO
 # ========================
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-
-
 
 # ========================
 # EDITAR USUARIO
@@ -280,7 +270,6 @@ def editar_usuario(id):
         usuario.telefono = request.form['telefono']
         usuario.rol = request.form['rol']
 
-        # 🚨 Si se intenta editarse a sí mismo, proteger el rol
         if usuario.id == current_user.id and usuario.rol != request.form['rol']:
             flash("No puedes cambiar tu propio rol.", "warning")
             return redirect(url_for('editar_usuario', id=id))
@@ -291,11 +280,9 @@ def editar_usuario(id):
 
     return render_template('editar_usuario.html', usuario=usuario)
 
-
 # ========================
 # ELIMINAR USUARIO
 # ========================
-
 @app.route('/admin/eliminar/<int:id>')
 @login_required
 def eliminar_usuario(id):
@@ -305,7 +292,6 @@ def eliminar_usuario(id):
 
     usuario = User.query.get_or_404(id)
 
-    # 🚨 Evitar que un usuario se elimine a sí mismo
     if usuario.id == current_user.id:
         flash("No puedes eliminarte a ti mismo.", "warning")
         return redirect(url_for('admin_index'))
@@ -318,7 +304,6 @@ def eliminar_usuario(id):
 # ========================
 # CONSULTAR STOCK
 # ========================
-
 @app.route('/consultar_stock')
 @login_required
 def consultar_stock():
@@ -326,19 +311,17 @@ def consultar_stock():
     return render_template('consultar_stock.html', productos=productos)
 
 # ========================
-# CATALOGO
+# CATÁLOGO
 # ========================
-
 @app.route('/catalogo')
 @login_required
 def catalogo():
-    productos = Producto.query.all()  # O puedes filtrar por categoría/género
+    productos = Producto.query.all()
     return render_template('catalogo.html', productos=productos)
 
 # ========================
-# VER DETALLES
+# VER DETALLES DE PRODUCTO
 # ========================
-
 @app.route('/producto/<int:id>')
 @login_required
 def ver_detalles(id):
