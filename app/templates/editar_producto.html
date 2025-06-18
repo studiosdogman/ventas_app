@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Producto</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-4">
+
+    <!-- Botón volver -->
+    <a href="{{ url_for('productos') }}" class="btn btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left"></i> Volver
+    </a>
+
+    <h2 class="mb-4 text-center">Editar Producto</h2>
+
+    <form method="POST" action="{{ url_for('editar_producto', id=producto.id) }}">
+
+        <div class="mb-3">
+            <label class="form-label">Nombre del Producto</label>
+            <input type="text" class="form-control" name="nombre" value="{{ producto.nombre }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Descripción</label>
+            <textarea class="form-control" name="descripcion" rows="2" required>{{ producto.descripcion }}</textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Características</label>
+            <textarea class="form-control" name="caracteristicas" rows="2">{{ producto.caracteristicas }}</textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Precio</label>
+            <input type="number" step="0.01" class="form-control" name="precio" value="{{ producto.precio }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Stock</label>
+            <input type="number" class="form-control" name="stock" value="{{ producto.stock }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Talla</label>
+            <select class="form-select" name="talla">
+                <option value="">Seleccionar talla</option>
+                {% for talla in ['XS', 'S', 'M', 'L', 'XL', 'XXL'] %}
+                <option value="{{ talla }}" {% if producto.talla == talla %}selected{% endif %}>{{ talla }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Tipo de Producto</label>
+            <select class="form-select" name="tipo_producto">
+                <option value="">Seleccionar tipo</option>
+                {% for tipo in ['Polerón', 'Chaqueta', 'Pantalón', 'Camisa', 'Polera'] %}
+                <option value="{{ tipo }}" {% if producto.tipo_producto == tipo %}selected{% endif %}>{{ tipo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Marca</label>
+            <select class="form-select" name="marca">
+                <option value="">Seleccionar marca</option>
+                {% for marca in ['Nike', 'Adidas', 'Reebok', 'Puma', 'Levi\'s', 'Converse'] %}
+                <option value="{{ marca }}" {% if producto.marca == marca %}selected{% endif %}>{{ marca }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">URL de la Imagen</label>
+            <input type="url" class="form-control" name="imagen_url" value="{{ producto.imagen_url }}">
+            <small class="form-text text-muted">Pega un link directo de imagen (opcional).</small>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <button type="submit" class="btn btn-success">Guardar Cambios</button>
+            <a href="{{ url_for('productos') }}" class="btn btn-secondary">Cancelar</a>
+        </div>
+
+    </form>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
