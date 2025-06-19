@@ -1,8 +1,12 @@
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, make_response
 from app import app, login_manager, db, bcrypt
-from app.models import User, Producto
 from flask_login import login_user, logout_user, current_user, login_required
-from werkzeug.security import check_password_hash
+from app.models import User, Producto, Venta
+import pandas as pd
+from io import BytesIO
+import calendar
+from flask import send_file
+
 
 # ========================
 # RUTA RAÍZ
@@ -96,7 +100,7 @@ def ventas():
     return render_template('ventas.html')
 
 # ========================
-# NUEVA VENTA
+# NUEVA VENTA (ACTUALIZADO)
 # ========================
 @app.route('/nueva_venta', methods=['GET', 'POST'])
 @login_required
@@ -105,18 +109,30 @@ def nueva_venta():
         flash("Acceso no autorizado.", "danger")
         return redirect(url_for('login'))
 
-    productos = Producto.query.all()
+    productos = Producto.query.all()  # Traemos todos los productos para seleccionar
 
     if request.method == 'POST':
         producto_id = request.form.get('producto')
         cantidad = int(request.form.get('cantidad'))
         metodo_pago = request.form.get('metodo_pago')
+        cliente = request.form.get('cliente') if metodo_pago == 'Fiado' else None
 
         producto = Producto.query.get(producto_id)
 
         if producto and producto.stock >= cantidad:
             producto.stock -= cantidad
+
+            nueva_venta = Venta(
+                producto_id=producto.id,
+                usuario_id=current_user.id,
+                cantidad=cantidad,
+                metodo_pago=metodo_pago,
+                cliente=cliente
+            )
+
+            db.session.add(nueva_venta)
             db.session.commit()
+
             flash("¡Venta registrada exitosamente!", "success")
             return redirect(url_for('ventas'))
         else:
@@ -223,7 +239,11 @@ def admin_index():
         flash("Acceso no autorizado", "danger")
         return redirect(url_for('login'))
 
+    # Filtros desde la URL
     search = request.args.get('search')
+    activos = request.args.get('activos')  # será "1" si el checkbox está marcado
+
+    # Buscar por nombre, apellido, email o rol
     if search:
         usuarios = User.query.filter(
             (User.nombre.ilike(f'%{search}%')) |
@@ -234,7 +254,17 @@ def admin_index():
     else:
         usuarios = User.query.all()
 
-    return render_template('admin_index.html', usuarios=usuarios, search=search)
+    # Si el filtro "activos" está activado, mostrar solo los que tienen ventas
+    if activos == '1':
+        usuarios = [u for u in usuarios if len(u.ventas) > 0]
+
+    return render_template(
+        'admin_index.html',
+        usuarios=usuarios,
+        search=search,
+        activos=activos
+    )
+
 
 # ========================
 # LOGOUT
@@ -292,14 +322,21 @@ def eliminar_usuario(id):
 
     usuario = User.query.get_or_404(id)
 
+    # 🚫 Evitar que se elimine a sí mismo
     if usuario.id == current_user.id:
         flash("No puedes eliminarte a ti mismo.", "warning")
+        return redirect(url_for('admin_index'))
+
+    # 🚫 Evitar eliminar si tiene ventas asociadas
+    if usuario.ventas and len(usuario.ventas) > 0:
+        flash("Este usuario no puede eliminarse porque tiene ventas registradas.", "warning")
         return redirect(url_for('admin_index'))
 
     db.session.delete(usuario)
     db.session.commit()
     flash("Usuario eliminado exitosamente.", "success")
     return redirect(url_for('admin_index'))
+
 
 # ========================
 # CONSULTAR STOCK
@@ -327,3 +364,95 @@ def catalogo():
 def ver_detalles(id):
     producto = Producto.query.get_or_404(id)
     return render_template('detalle_producto.html', producto=producto)
+
+
+@app.route('/historial_ventas', methods=['GET'])
+@login_required
+def historial_ventas():
+    if current_user.rol != 'administrador':
+        flash("Acceso no autorizado", "danger")
+        return redirect(url_for('login'))
+
+    # Obtener filtros
+    fecha_inicio = request.args.get('fecha_inicio')
+    fecha_fin = request.args.get('fecha_fin')
+    metodo_pago = request.args.get('metodo_pago')
+    vendedor_id = request.args.get('vendedor_id')
+
+    ventas = Venta.query
+
+    if fecha_inicio:
+        ventas = ventas.filter(Venta.fecha >= fecha_inicio)
+    if fecha_fin:
+        ventas = ventas.filter(Venta.fecha <= fecha_fin)
+    if metodo_pago and metodo_pago != 'Todos':
+        ventas = ventas.filter(Venta.metodo_pago == metodo_pago)
+    if vendedor_id and vendedor_id != 'Todos':
+        ventas = ventas.filter(Venta.usuario_id == vendedor_id)
+
+    ventas = ventas.order_by(Venta.fecha.desc()).all()
+    usuarios = User.query.all()
+
+    return render_template(
+        'historial_ventas.html',
+        ventas=ventas,
+        usuarios=usuarios,
+        filtros={
+            'fecha_inicio': fecha_inicio,
+            'fecha_fin': fecha_fin,
+            'metodo_pago': metodo_pago,
+            'vendedor_id': vendedor_id
+        }
+    )
+
+
+# ========================
+# EXPORTAR HISTORIAL A EXCEL
+# ========================
+@app.route('/exportar_excel_mes')
+@login_required
+def exportar_excel_mes():
+    if current_user.rol != 'administrador':
+        flash("Acceso no autorizado", "danger")
+        return redirect(url_for('login'))
+
+    mes = request.args.get('mes')  # formato: 2025-06
+    if not mes:
+        flash("Debes seleccionar un mes", "warning")
+        return redirect(url_for('historial_ventas'))
+
+    anio, mes_num = map(int, mes.split('-'))
+    inicio = f"{anio}-{mes_num:02d}-01"
+    ultimo_dia = calendar.monthrange(anio, mes_num)[1]
+    fin = f"{anio}-{mes_num:02d}-{ultimo_dia}"
+
+    ventas = Venta.query.filter(
+        Venta.fecha >= inicio,
+        Venta.fecha <= fin
+    ).order_by(Venta.fecha.asc()).all()
+
+    data = []
+    for v in ventas:
+        data.append({
+            'Fecha': v.fecha.strftime('%d/%m/%Y %H:%M'),
+            'Producto': v.producto.nombre,
+            'Cantidad': v.cantidad,
+            'Método de Pago': v.metodo_pago,
+            'Cliente': v.cliente or '-',
+            'Vendedor': f"{v.usuario.nombre} {v.usuario.apellido}"
+        })
+
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name=f'Ventas_{mes}')
+        worksheet = writer.sheets[f'Ventas_{mes}']
+        for column_cells in worksheet.columns:
+            max_length = max(len(str(cell.value)) for cell in column_cells)
+            col_letter = column_cells[0].column_letter
+            worksheet.column_dimensions[col_letter].width = max_length + 2
+
+    
+
+    output.seek(0)
+    return send_file(output, as_attachment=True, download_name=f'ventas_{mes}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

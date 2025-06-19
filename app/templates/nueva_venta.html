@@ -2,45 +2,57 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Registrar Venta</title>
+    <title>Nueva Venta</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="bg-light">
-    <div class="container mt-5">
-        <h2>Registrar Nueva Venta</h2>
+<body>
+<div class="container mt-5">
+    <h2>Registrar Nueva Venta</h2>
+    <form method="POST" action="{{ url_for('nueva_venta') }}">
+        <div class="mb-3">
+            <label for="producto" class="form-label">Producto</label>
+            <select class="form-select" name="producto" id="producto" required>
+                <option value="">Seleccione un producto</option>
+                {% for producto in productos %}
+                <option value="{{ producto.id }}">
+                    {{ producto.nombre }} - Stock: {{ producto.stock }} - ${{ producto.precio }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
 
-        <form method="POST" class="mt-4">
-            <div class="mb-3">
-                <label for="producto" class="form-label">Producto</label>
-                <select name="producto" id="producto" class="form-select" required>
-                    <option value="">Seleccione un producto</option>
-                    {% for producto in productos %}
-                    <option value="{{ producto.id }}">{{ producto.nombre }} (Stock: {{ producto.stock }})</option>
-                    {% endfor %}
-                </select>
-            </div>
+        <div class="mb-3">
+            <label for="cantidad" class="form-label">Cantidad</label>
+            <input type="number" class="form-control" id="cantidad" name="cantidad" min="1" required>
+        </div>
 
-            <div class="mb-3">
-                <label for="cantidad" class="form-label">Cantidad</label>
-                <input type="number" name="cantidad" id="cantidad" class="form-control" min="1" required>
-            </div>
+        <div class="mb-3">
+            <label for="metodo_pago" class="form-label">Método de Pago</label>
+            <select class="form-select" name="metodo_pago" id="metodo_pago" onchange="toggleClienteField()" required>
+                <option value="Efectivo">Efectivo</option>
+                <option value="Débito">Débito</option>
+                <option value="Crédito">Crédito</option>
+                <option value="Fiado">Fiado</option>
+            </select>
+        </div>
 
-            <div class="mb-3">
-                <label for="metodo_pago" class="form-label">Método de Pago</label>
-                <select name="metodo_pago" id="metodo_pago" class="form-select" required>
-                    <option value="">Seleccione método</option>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="debito">Débito</option>
-                    <option value="credito">Crédito</option>
-                    <option value="fiado">Fiado</option>
-                </select>
-            </div>
+        <div class="mb-3" id="cliente_field" style="display: none;">
+            <label for="cliente" class="form-label">Nombre del Cliente (Solo para ventas fiadas)</label>
+            <input type="text" class="form-control" name="cliente" id="cliente">
+        </div>
 
-            <button type="submit" class="btn btn-primary">Registrar Venta</button>
-            <a href="{{ url_for('ventas') }}" class="btn btn-secondary">Cancelar</a>
-        </form>
-    </div>
+        <button type="submit" class="btn btn-primary">Registrar Venta</button>
+        <a href="{{ url_for('ventas') }}" class="btn btn-secondary">Cancelar</a>
+    </form>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function toggleClienteField() {
+        const metodo = document.getElementById("metodo_pago").value;
+        const clienteField = document.getElementById("cliente_field");
+        clienteField.style.display = metodo === "Fiado" ? "block" : "none";
+    }
+    window.onload = toggleClienteField;
+</script>
 </body>
 </html>

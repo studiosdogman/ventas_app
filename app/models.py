@@ -1,4 +1,5 @@
 from app import db
+from datetime import datetime
 from flask_login import UserMixin
 
 class User(UserMixin, db.Model):
@@ -24,4 +25,22 @@ class Producto(db.Model):
     imagen_url = db.Column(db.String(255))
     qr = db.Column(db.String(255))
     categoria = db.Column(db.String(50))  # 👉 nueva columna
+
+
+class Venta(db.Model):
+    __tablename__ = 'venta'
+
+    id = db.Column(db.Integer, primary_key=True)
+    producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False)
+    metodo_pago = db.Column(db.String(50), nullable=False)
+    cliente = db.Column(db.String(120))  # solo usado si es venta fiada
+    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+
+    producto = db.relationship('Producto', backref='ventas')
+    usuario = db.relationship('User', backref='ventas')
+
+    def __repr__(self):
+        return f'<Venta {self.id} - Producto {self.producto_id} - Usuario {self.usuario_id}>'
 
