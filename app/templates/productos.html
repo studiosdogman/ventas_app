@@ -1,91 +1,55 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Lista de Productos</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+{% extends 'base_admin.html' %}
 
-    <style>
-        .producto-card {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .producto-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-        }
-        .producto-card img {
-            max-height: 300px;
-            object-fit: contain;
-            width: 100%;
-            border-bottom: 1px solid #ddd;
-        }
-    </style>
-</head>
-
-<body class="bg-light">
-
-<div class="container py-5">
-
-    <!-- Botón volver y agregar -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <a href="{{ url_for('admin_index') }}" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Volver
-        </a>
-        <h2 class="text-center flex-grow-1">Catálogo de Productos</h2>
-        <a href="{{ url_for('agregar_producto') }}" class="btn btn-primary">
-            + Agregar Producto
-        </a>
-    </div>
-
-    <!-- Grid de productos -->
-    <div class="row">
-        {% for producto in productos %}
-        <div class="col-md-4 mb-4">
-            <div class="card shadow-sm producto-card h-100 position-relative">
-
-                <!-- Botones Editar y Eliminar -->
-                <div class="position-absolute top-0 end-0 p-2 d-flex gap-1">
-                    <a href="{{ url_for('editar_producto', id=producto.id) }}" class="btn btn-sm btn-warning" title="Editar">
-                        <i class="bi bi-pencil-square"></i>
-                    </a>
-                    <form method="POST" action="{{ url_for('eliminar_producto', id=producto.id) }}" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-danger" title="Eliminar" onclick="return confirm('¿Estás seguro que deseas eliminar este producto?')">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Imagen del producto -->
-                {% if producto.imagen_url %}
-                <img src="{{ producto.imagen_url }}" class="card-img-top" alt="{{ producto.nombre }}">
-                {% else %}
-                <img src="https://via.placeholder.com/400x300?text=Sin+Imagen" class="card-img-top" alt="Sin Imagen">
-                {% endif %}
-
-                <!-- Nombre del producto -->
-                <div class="card-body text-center">
-                    <h5 class="card-title fw-bold">{{ producto.nombre }}</h5>
-                </div>
-
-                <!-- Footer de detalles -->
-                <div class="card-footer text-center bg-light">
-                    <small class="text-muted">
-                        <strong>Precio:</strong> ${{ producto.precio }}<br>
-                        <strong>Stock:</strong> {{ producto.stock }} unidades<br>
-                        <strong>Talla:</strong> {{ producto.talla or '-' }}<br>
-                        <strong>Tipo:</strong> {{ producto.tipo_producto or '-' }}<br>
-                        <strong>Marca:</strong> {{ producto.marca or '-' }}
-                    </small>
-                </div>
-
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Catálogo de Productos</h2>
+    <a href="{{ url_for('agregar_producto') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Agregar Producto
+    </a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<div class="row">
+    {% for producto in productos %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            {% if producto.imagen_url %}
+            <img src="{{ producto.imagen_url }}" class="card-img-top" alt="{{ producto.nombre }}">
+            {% else %}
+            <img src="https://via.placeholder.com/150" class="card-img-top" alt="Sin imagen">
+            {% endif %}
+
+            <div class="card-body text-center">
+                <h5 class="card-title">{{ producto.nombre }}</h5>
+                <p><strong>Código de Barras:</strong> {{ producto.codigo_barras }}</p>
+                
+                <!-- Mostrar QR -->
+                <img src="{{ url_for('static', filename='qr/' + producto.codigo_barras + '.png') }}" alt="QR Código" width="100">
+
+                <ul class="list-group list-group-flush mt-3">
+                    <li class="list-group-item"><strong>Precio:</strong> ${{ "{:,.0f}".format(producto.precio) }}</li>
+                    <li class="list-group-item"><strong>Stock:</strong> {{ producto.stock }} unidades</li>
+                    <li class="list-group-item"><strong>Talla:</strong> {{ producto.talla }}</li>
+                    <li class="list-group-item"><strong>Tipo:</strong> {{ producto.tipo_producto }}</li>
+                    <li class="list-group-item"><strong>Marca:</strong> {{ producto.marca }}</li>
+                    <li class="list-group-item"><strong>Categoría:</strong> {{ producto.categoria }}</li>
+                </ul>
+            </div>
+
+            <div class="card-footer d-flex justify-content-between">
+                <a href="{{ url_for('editar_producto', id=producto.id) }}" class="btn btn-sm btn-warning">
+                    <i class="bi bi-pencil-fill"></i>
+                </a>
+                <a href="{{ url_for('descargar_etiqueta', id=producto.id) }}" class="btn btn-sm btn-info" title="Descargar Etiqueta">
+                    <i class="bi bi-printer-fill"></i>
+                </a>
+                <form action="{{ url_for('eliminar_producto', id=producto.id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este producto?');">
+                    <button type="submit" class="btn btn-sm btn-danger">
+                        <i class="bi bi-trash-fill"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -11,20 +11,20 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(150), nullable=False)
     rol = db.Column(db.String(50), nullable=False)
 
-from app import db
 class Producto(db.Model):
+    __tablename__ = 'producto'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
-    descripcion = db.Column(db.Text, nullable=False)
-    caracteristicas = db.Column(db.Text)
+    descripcion = db.Column(db.String(255), nullable=False)
+    caracteristicas = db.Column(db.String(255))
     precio = db.Column(db.Float, nullable=False)
     stock = db.Column(db.Integer, nullable=False)
-    talla = db.Column(db.String(10))
-    tipo_producto = db.Column(db.String(50))
-    marca = db.Column(db.String(50))
+    talla = db.Column(db.String(10), nullable=False)
+    tipo_producto = db.Column(db.String(50), nullable=False)
+    marca = db.Column(db.String(50), nullable=False)
+    categoria = db.Column(db.String(50), nullable=False)
     imagen_url = db.Column(db.String(255))
-    qr = db.Column(db.String(255))
-    categoria = db.Column(db.String(50))  # 👉 nueva columna
+    codigo_barras = db.Column(db.String(20), unique=True)  # 🔹 Nuevo campo agregado
 
 
 class Venta(db.Model):

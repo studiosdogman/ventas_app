@@ -1,11 +1,17 @@
-from flask import render_template, request, redirect, url_for, flash, make_response
+from flask import render_template, request, redirect, url_for, flash, make_response, send_file
 from app import app, login_manager, db, bcrypt
 from flask_login import login_user, logout_user, current_user, login_required
 from app.models import User, Producto, Venta
 import pandas as pd
 from io import BytesIO
 import calendar
-from flask import send_file
+from app.utils import generar_codigo_barras, generar_qr
+import qrcode
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 
 
 # ========================
@@ -112,12 +118,12 @@ def nueva_venta():
     productos = Producto.query.all()  # Traemos todos los productos para seleccionar
 
     if request.method == 'POST':
-        producto_id = request.form.get('producto')
+        producto_codigo = request.form.get('producto_id')  # Este es el código de barras escaneado
         cantidad = int(request.form.get('cantidad'))
         metodo_pago = request.form.get('metodo_pago')
         cliente = request.form.get('cliente') if metodo_pago == 'Fiado' else None
 
-        producto = Producto.query.get(producto_id)
+        producto = Producto.query.filter_by(codigo_barras=producto_codigo).first()
 
         if producto and producto.stock >= cantidad:
             producto.stock -= cantidad
@@ -144,10 +150,12 @@ def nueva_venta():
 # ========================
 # AGREGAR PRODUCTO
 # ========================
+
 @app.route('/agregar_producto', methods=['GET', 'POST'])
 @login_required
 def agregar_producto():
     if request.method == 'POST':
+        # 1️⃣ Recoger datos desde el formulario
         nombre = request.form['nombre']
         descripcion = request.form['descripcion']
         caracteristicas = request.form['caracteristicas']
@@ -159,6 +167,14 @@ def agregar_producto():
         imagen_url = request.form['imagen_url']
         categoria = request.form['categoria']
 
+        # 2️⃣ Contar productos existentes con la misma combinación para generar secuencial
+        existing_count = Producto.query.filter_by(
+            categoria=categoria,
+            tipo_producto=tipo_producto,
+            talla=talla
+        ).count()
+
+        # 3️⃣ Crear el producto sin código aún
         nuevo_producto = Producto(
             nombre=nombre,
             descripcion=descripcion,
@@ -172,12 +188,22 @@ def agregar_producto():
             categoria=categoria
         )
 
+        # 4️⃣ Generar código de barras
+        nuevo_producto.codigo_barras = generar_codigo_barras(nuevo_producto, existing_count)
+
+        # 5️⃣ Guardar en la base de datos primero para obtener ID
         db.session.add(nuevo_producto)
         db.session.commit()
-        flash("Producto agregado correctamente", "success")
+
+        # 6️⃣ Generar código QR con el código de barras
+        generar_qr(nuevo_producto.codigo_barras)
+
+        flash("Producto agregado correctamente con código de barras y QR.", "success")
         return redirect(url_for('productos'))
 
     return render_template('agregar_producto.html')
+
+
 
 # ========================
 # PRODUCTOS
@@ -213,6 +239,7 @@ def editar_producto(id):
     producto = Producto.query.get_or_404(id)
 
     if request.method == 'POST':
+        # Los campos editables
         producto.nombre = request.form['nombre']
         producto.descripcion = request.form['descripcion']
         producto.caracteristicas = request.form['caracteristicas']
@@ -221,29 +248,34 @@ def editar_producto(id):
         producto.talla = request.form['talla']
         producto.tipo_producto = request.form['tipo_producto']
         producto.marca = request.form['marca']
-        producto.imagen_url = request.form['imagen_url']
         producto.categoria = request.form['categoria']
+        producto.imagen_url = request.form['imagen_url']
+
+        # ✅ No se debe modificar el código de barras (se mantiene fijo)
+
         db.session.commit()
         flash('Producto actualizado correctamente.', 'success')
         return redirect(url_for('productos'))
 
     return render_template('editar_producto.html', producto=producto)
 
+
 # ========================
 # PANEL ADMINISTRADOR
 # ========================
-@app.route('/admin')
-@login_required
+@app.route('/admin')  # Ruta protegida: solo accesible para administradores
+@login_required       # Solo usuarios autenticados pueden ingresar
 def admin_index():
+    # Si el usuario actual no es administrador, bloquear acceso
     if current_user.rol != 'administrador':
         flash("Acceso no autorizado", "danger")
         return redirect(url_for('login'))
 
-    # Filtros desde la URL
-    search = request.args.get('search')
-    activos = request.args.get('activos')  # será "1" si el checkbox está marcado
+    # Obtener parámetros GET desde la URL
+    search = request.args.get('search')   # Palabra buscada
+    activos = request.args.get('activos') # Checkbox activos=1 si está marcado
 
-    # Buscar por nombre, apellido, email o rol
+    # Si hay texto en el buscador, filtrar usuarios por nombre, apellido, email o rol
     if search:
         usuarios = User.query.filter(
             (User.nombre.ilike(f'%{search}%')) |
@@ -252,19 +284,37 @@ def admin_index():
             (User.rol.ilike(f'%{search}%'))
         ).all()
     else:
+        # Si no se está buscando, traer todos los usuarios
         usuarios = User.query.all()
 
-    # Si el filtro "activos" está activado, mostrar solo los que tienen ventas
+    # Si el checkbox "Solo usuarios con ventas" está marcado
     if activos == '1':
+        # Filtrar solo usuarios que tengan al menos 1 venta
         usuarios = [u for u in usuarios if len(u.ventas) > 0]
 
+    # 🔥 Indicadores dinámicos para las tarjetas
+
+    # Total de usuarios registrados (sin filtro)
+    total_usuarios = User.query.count()
+
+    # Total de ventas realizadas en el sistema
+    total_ventas = Venta.query.count()
+
+    # Definir el stock mínimo para que un producto sea considerado crítico
+    stock_minimo = 5 
+    # Contar productos cuyo stock sea menor al stock mínimo
+    productos_stock_critico = Producto.query.filter(Producto.stock < stock_minimo).count()
+
+    # Enviar todos los datos al template HTML
     return render_template(
         'admin_index.html',
-        usuarios=usuarios,
-        search=search,
-        activos=activos
+        usuarios=usuarios,                     
+        search=search,                         
+        activos=activos,                       
+        total_usuarios=total_usuarios,         
+        total_ventas=total_ventas,             
+        productos_stock_critico=productos_stock_critico  
     )
-
 
 # ========================
 # LOGOUT
@@ -456,3 +506,46 @@ def exportar_excel_mes():
 
     output.seek(0)
     return send_file(output, as_attachment=True, download_name=f'ventas_{mes}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+# ========================
+# etiquetas
+# ========================
+
+@app.route('/descargar_etiqueta/<int:id>')
+@login_required
+def descargar_etiqueta(id):
+    producto = Producto.query.get_or_404(id)
+
+    # Crear imagen QR en memoria
+    qr = qrcode.make(producto.codigo_barras)
+    qr_buffer = BytesIO()
+    qr.save(qr_buffer, format='PNG')
+    qr_buffer.seek(0)
+
+    # Convertir a imagen compatible con ReportLab
+    qr_image = ImageReader(qr_buffer)
+
+    # Crear PDF en memoria
+    pdf_buffer = BytesIO()
+    c = canvas.Canvas(pdf_buffer, pagesize=(80 * mm, 50 * mm))  # Tamaño de etiqueta aproximado
+    c.setFont("Helvetica-Bold", 12)
+
+    # Nombre del producto
+    c.drawString(10 * mm, 40 * mm, f"{producto.nombre}")
+
+    # Precio
+    c.setFont("Helvetica", 10)
+    c.drawString(10 * mm, 35 * mm, f"Precio: ${producto.precio:,.0f}")
+
+    # Insertar QR correctamente
+    c.drawImage(qr_image, 10 * mm, 5 * mm, 30 * mm, 30 * mm)
+
+    c.save()
+    pdf_buffer.seek(0)
+
+    return send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name=f'etiqueta_{producto.nombre}.pdf',
+        mimetype='application/pdf'
+    )
